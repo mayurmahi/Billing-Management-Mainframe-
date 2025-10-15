@@ -1,0 +1,134 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. BILLPROG.
+      *-----------------------------------------------------------------
+      * FINAL CORRECTED VERSION OF THE BATCH PROGRAM FOR VSAM.
+      *-----------------------------------------------------------------
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT USAGE-FILE ASSIGN TO 'USAGE'
+               FILE STATUS IS WS-USAGE-STATUS.
+           SELECT PAYMENT-FILE ASSIGN TO 'PAYMENT'
+               FILE STATUS IS WS-PAYMENT-STATUS.
+           SELECT BILL-REPORT-FILE ASSIGN TO 'BILRPT'.
+           SELECT CUST-MASTER-FILE ASSIGN TO CUSTVSAM
+                  ORGANIZATION IS INDEXED
+                  ACCESS MODE IS DYNAMIC
+                  RECORD KEY IS CM-CUST-ID
+                  FILE STATUS IS WS-CUST-VSAM-STATUS.
+
+       DATA DIVISION.
+       FILE SECTION.
+       FD  USAGE-FILE.
+       01  USAGE-RECORD.
+           05 UR-CUST-ID   PIC X(8).
+           05 UR-UNITS     PIC 9(4).
+           05 FILLER       PIC X(68).
+
+       FD  PAYMENT-FILE.
+       01  PAYMENT-RECORD.
+           05 PR-CUST-ID   PIC X(8).
+           05 PR-PAYMENT   PIC 9(8)V99.
+           05 FILLER       PIC X(62).
+
+       FD  BILL-REPORT-FILE.
+       01  REPORT-LINE    PIC X(80).
+
+       FD  CUST-MASTER-FILE.
+       01  CUST-MASTER-RECORD.
+           05 CM-CUST-ID           PIC X(8).
+           05 CM-CUST-NAME         PIC X(20).
+           05 CM-CUST-ADDRESS      PIC X(20).
+           05 CM-CUST-STATUS       PIC X(1).
+           05 CM-CURRENT-BALANCE   PIC 9(8)V99.
+           05 CM-LAST-BILL-DATE    PIC X(10).
+           05 FILLER               PIC X(11).
+
+       WORKING-STORAGE SECTION.
+       01  WS-STATUS-CODES.
+           05 WS-USAGE-STATUS      PIC X(2).
+           05 WS-PAYMENT-STATUS    PIC X(2).
+           05 WS-CUST-VSAM-STATUS  PIC X(2).
+           05 WS-USAGE-EOF-FLAG    PIC X VALUE 'N'.
+              88 USAGE-EOF         VALUE 'Y'.
+           05 WS-PAYMENT-SEARCH-FLAG PIC X.
+              88 PAYMENT-SEARCH-DONE  VALUE 'Y'.
+
+       01  WS-CALCULATION-FIELDS.
+           05 WS-RATE-PER-UNIT     PIC 9V99 VALUE 7.00.
+           05 WS-CURRENT-CHARGES   PIC 9(8)V99.
+           05 WS-PAYMENT-AMOUNT    PIC 9(8)V99.
+
+       01  WS-REPORT-LINE.
+           05 FILLER           PIC X(1) VALUE ' '.
+           05 RPT-CUST-ID      PIC X(8).
+           05 FILLER           PIC X(2) VALUE ' '.
+           05 RPT-CUST-NAME    PIC X(20).
+           05 FILLER           PIC X(2) VALUE ' '.
+           05 RPT-BALANCE      PIC $$$$,$$9.99.
+           05 FILLER           PIC X(35) VALUE ' '.
+
+       PROCEDURE DIVISION.
+       1000-MAIN-PROCEDURE.
+           OPEN INPUT USAGE-FILE.
+           OPEN I-O CUST-MASTER-FILE.
+           OPEN OUTPUT BILL-REPORT-FILE.
+
+           READ USAGE-FILE
+               AT END SET USAGE-EOF TO TRUE
+           END-READ.
+
+           PERFORM 2000-PROCESS-RECORDS UNTIL USAGE-EOF.
+
+           CLOSE USAGE-FILE, CUST-MASTER-FILE, BILL-REPORT-FILE.
+           STOP RUN.
+
+       2000-PROCESS-RECORDS.
+           MOVE UR-CUST-ID TO CM-CUST-ID.
+           READ CUST-MASTER-FILE
+               KEY IS CM-CUST-ID
+               INVALID KEY
+                   DISPLAY 'VSAM KEY ERROR FOR ID: ' UR-CUST-ID
+               NOT INVALID KEY
+                   PERFORM 3000-CALCULATE-BILL
+           END-READ.
+
+           READ USAGE-FILE
+               AT END SET USAGE-EOF TO TRUE
+           END-READ.
+
+       3000-CALCULATE-BILL.
+           COMPUTE WS-CURRENT-CHARGES = UR-UNITS * WS-RATE-PER-UNIT.
+           PERFORM 4000-GET-PAYMENT.
+
+           COMPUTE CM-CURRENT-BALANCE = CM-CURRENT-BALANCE
+                                      + WS-CURRENT-CHARGES
+                                      - WS-PAYMENT-AMOUNT.
+
+           REWRITE CUST-MASTER-RECORD
+               INVALID KEY
+                   DISPLAY 'VSAM REWRITE ERROR FOR ID: ' CM-CUST-ID
+           END-REWRITE.
+
+           MOVE CM-CUST-ID TO RPT-CUST-ID.
+           MOVE CM-CUST-NAME TO RPT-CUST-NAME.
+           MOVE CM-CURRENT-BALANCE TO RPT-BALANCE.
+           WRITE REPORT-LINE FROM WS-REPORT-LINE.
+
+       4000-GET-PAYMENT.
+           MOVE 0 TO WS-PAYMENT-AMOUNT.
+           OPEN INPUT PAYMENT-FILE.
+           MOVE 'N' TO WS-PAYMENT-SEARCH-FLAG.
+
+           PERFORM UNTIL PAYMENT-SEARCH-DONE
+               READ PAYMENT-FILE
+                   AT END
+                       SET PAYMENT-SEARCH-DONE TO TRUE
+                   NOT AT END
+                       IF PR-CUST-ID = UR-CUST-ID
+                           MOVE PR-PAYMENT TO WS-PAYMENT-AMOUNT
+                           SET PAYMENT-SEARCH-DONE TO TRUE
+                       END-IF
+               END-READ
+           END-PERFORM.
+           CLOSE PAYMENT-FILE.
