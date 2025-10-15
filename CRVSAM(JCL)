@@ -1,0 +1,42 @@
+//CRVSAM JOB CLASS=A,MSGCLASS=X,NOTIFY=&SYSUID
+//*------------------------------------------------------------------
+//* THIS JOB CREATES THE CUSTOMER VSAM KSDS FILE AND LOADS
+//* IT WITH THREE SAMPLE CUSTOMERS.
+//*------------------------------------------------------------------
+//STEP1    EXEC PGM=IDCAMS
+//SYSPRINT DD SYSOUT=*
+//SYSIN    DD *
+  /* DELETE THE FILE FIRST IN CASE IT EXISTS FROM A PREVIOUS RUN */
+  DELETE Z76894.CUSTOMER.MASTER.VSAM CLUSTER
+
+  SET MAXCC = 0
+
+  /* DEFINE THE VSAM KSDS CLUSTER */
+  DEFINE CLUSTER (                           -
+    NAME(Z76894.CUSTOMER.MASTER.VSAM)        -
+    INDEXED                                  -
+    RECORDS(100 50)                          -
+    KEYS(8 0)                                -
+    RECORDSIZE(80 80)                        -
+    )                                        -
+  DATA (                                     -
+    NAME(Z76894.CUSTOMER.MASTER.VSAM.DATA)   -
+    )                                        -
+  INDEX (                                    -
+    NAME(Z76894.CUSTOMER.MASTER.VSAM.INDEX)  -
+    )
+/*
+//STEP2    EXEC PGM=IDCAMS
+//SYSPRINT DD SYSOUT=*
+//INPUT    DD *
+1001    RAVI SHARMA         PUNE, MH            A00000200002025-08-10
+1002    PRIYA DESHPANDE     NAGPUR, MH          A00000000002025-08-10
+1003    ARJUN PATIL         KARMALA, MH         A00000275002025-08-10
+/*
+//OUTPUT   DD DSN=Z76894.CUSTOMER.MASTER.VSAM,DISP=SHR
+//SYSIN    DD *
+  /* LOAD THE SAMPLE DATA INTO THE VSAM FILE */
+  REPRO                                      -
+    INFILE(INPUT)                            -
+    OUTFILE(OUTPUT)
+/*
